@@ -10,7 +10,7 @@
 session_start();
 
 // ============== AYARLAR ==============
-$PASSWORD   = 'karamamba';
+$PASSWORD   = 'kara';
 $PANEL_KEY  = 'lock';
 $SPAWN_KEY  = 'diril';
 $MASTER_KEY = 'x7k9mP2vL5nQ8wR3';
